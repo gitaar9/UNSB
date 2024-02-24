@@ -1,10 +1,11 @@
 import time
 import torch
+from matplotlib import pyplot as plt
+
 from options.train_options import TrainOptions
 from data import create_dataset
 from models import create_model
 from util import util
-from util.visualizer import Visualizer
 import wandb
 
 
@@ -18,8 +19,6 @@ if __name__ == '__main__':
     print('The number of training images = %d' % dataset_size)
 
     wandb_run = wandb.init(project="UNSB", name="test") # Initialize a new run
-    visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
-    opt.visualizer = visualizer
     total_iters = 0                # the total number of training iterations
 
     optimize_time = 0.1
@@ -29,7 +28,6 @@ if __name__ == '__main__':
         epoch_start_time = time.time()  # timer for entire epoch
         iter_data_time = time.time()    # timer for data loading per iteration
         epoch_iter = 0                  # the number of training iterations in current epoch, reset to 0 every epoch
-        visualizer.reset()              # reset the visualizer: make sure it saves the results to HTML at least once every epoch
 
         dataset.set_epoch(epoch)
         for i, (data, data2) in enumerate(zip(dataset, dataset2)):  # inner loop within one epoch
@@ -53,24 +51,49 @@ if __name__ == '__main__':
                 torch.cuda.synchronize()
             optimize_time = (time.time() - optimize_start_time) / batch_size * 0.005 + 0.995 * optimize_time
 
-            if total_iters % opt.display_freq == 0:   # display images on visdom and save images to a HTML file
-                save_result = total_iters % opt.update_html_freq == 0
-                model.compute_visuals()
-                visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
-
             if total_iters % opt.print_freq == 0:    # print training losses and save logging information to the disk
                 losses = model.get_current_losses()
-                visualizer.print_current_losses(epoch, epoch_iter, losses, optimize_time, t_data)
-                log_dict = {'epoch': epoch, "losses": {k: v for k, v in losses.items()}}
-                visuals = model.get_current_visuals()
-                for label, image in visuals.items():
-                    image_numpy = util.tensor2im(image)
-                    image = wandb.Image(image_numpy, caption=label)
-                    log_dict[label] = image
-                wandb_run.log(log_dict)
+                # Print to std out
+                message = '(epoch: %d, iters: %d, time: %.3f, data: %.3f) ' % (epoch, epoch_iter, optimize_time, t_data)
+                for k, v in losses.items():
+                    message += '%s: %.3f ' % (k, v)
+                print(message)  # print the message
 
-                if opt.display_id is None or opt.display_id > 0:
-                    visualizer.plot_current_losses(epoch, float(epoch_iter) / dataset_size, losses)
+                # Log to wandb
+                log_dict = {
+                    'epoch': epoch,
+                    "losses": {k: v for k, v in losses.items()},
+                    'lr': model.optimizers[0].param_groups[0]['lr']
+                }
+                model.compute_visuals()
+                visuals = {label: util.tensor2im(tensor) for label, tensor in model.get_current_visuals().items()}
+                fig, axs = plt.subplots(1, 3, figsize=(9, 3))
+                axs[0].imshow(visuals['real_A'], cmap='gray')
+                axs[0].set_title('Real A')
+                axs[0].axis('off')
+                axs[1].imshow(visuals['real_A_noisy'], cmap='gray')
+                axs[1].set_title('Real A Noisy')
+                axs[1].axis('off')
+                axs[2].imshow(visuals['fake_B'], cmap='gray')
+                axs[2].set_title('Fake B')
+                axs[2].axis('off')
+                plt.tight_layout()
+                log_dict["real2fake"] = fig
+                plt.close()
+
+                # Plot for real_B and idt_B
+                fig, axs = plt.subplots(1, 2, figsize=(6, 3))
+                axs[0].imshow(visuals['real_B'], cmap='gray')
+                axs[0].set_title('Real B')
+                axs[0].axis('off')
+                axs[1].imshow(visuals['idt_B'], cmap='gray')
+                axs[1].set_title('Idt B')
+                axs[1].axis('off')
+                plt.tight_layout()
+                log_dict["fake2fake"] = fig
+                plt.close()
+
+                wandb_run.log(log_dict)
 
             if total_iters % opt.save_latest_freq == 0:   # cache our latest model every <save_latest_freq> iterations
                 print('saving the latest model (epoch %d, total_iters %d)' % (epoch, total_iters))

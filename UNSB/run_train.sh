@@ -1,2 +1,2 @@
 #python train.py --dataroot ./datasets/horse2zebra --name h2z_SB --mode sb --lambda_SB 1.0 --lambda_NCE 1.0 --gpu_ids 0
-python train.py --dataroot ./datasets/chinese_painting2edges --name c2e_SB_grayscale --mode sb --lambda_SB 1.0 --lambda_NCE 1.0 --gpu_ids 0 --input_nc 1 --output_nc 1 --display_freq 100
+python train.py --dataroot ./datasets/chinese_painting2edges --name c2e_SB_grayscale_2 --mode sb --lambda_SB 1.0 --lambda_NCE 1.0 --gpu_ids 0 --input_nc 1 --output_nc 1 --print_freq 600
